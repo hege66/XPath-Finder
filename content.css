@@ -1,0 +1,43 @@
+/* Cursor styles when element selection is active */
+body.xpath-finder-active {
+  cursor: crosshair !important;
+}
+
+/* Tooltip styles */
+.xpath-finder-tooltip {
+  position: fixed;
+  background-color: rgba(220, 38, 38, 0.9);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  z-index: 10001;
+  max-width: 300px;
+  word-break: break-all;
+  pointer-events: none;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+/* Animation for the highlight overlay */
+@keyframes xpath-finder-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 5px rgba(220, 38, 38, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0);
+  }
+}
+
+/* Highlight overlay styles */
+.xpath-finder-highlight {
+  position: absolute;
+  border: 2px solid #dc2626;
+  background-color: rgba(220, 38, 38, 0.1);
+  pointer-events: none;
+  z-index: 10000;
+  animation: xpath-finder-pulse 1.5s infinite;
+} 

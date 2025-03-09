@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XPath Finder</title>
+    <link rel="stylesheet" href="tailwind.css">
+    <style>
+        html,
+        body {
+            width: 450px;
+            height: 600px;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        /* Toggle switch styles */
+        .toggle-checkbox:checked {
+            transform: translateX(100%);
+            border-color: #4f46e5;
+        }
+
+        .toggle-checkbox:checked+.toggle-label {
+            background-color: #4f46e5;
+        }
+
+        /* Simple mode toggle */
+        .simple-toggle {
+            width: 32px;
+            height: 16px;
+            position: relative;
+            display: inline-block;
+        }
+
+        .simple-toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .simple-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 34px;
+        }
+
+        .simple-slider:before {
+            position: absolute;
+            content: "";
+            height: 12px;
+            width: 12px;
+            left: 2px;
+            bottom: 2px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked+.simple-slider {
+            background-color: #10b981;
+        }
+
+        input:checked+.simple-slider:before {
+            transform: translateX(16px);
+        }
+
+        /* XPath text styles */
+        .xpath-text {
+            word-break: break-all;
+            white-space: normal;
+            line-height: 1.4;
+        }
+
+        /* XPath list styles */
+        #xpathList {
+            max-height: 450px;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        /* Main container */
+        .main-container {
+            overflow-y: auto;
+            padding: 1rem;
+            box-sizing: border-box;
+        }
+
+        /* Remove button border */
+        .focus\:outline-none:focus {
+            outline: none;
+            box-shadow: none;
+            border: none;
+        }
+
+        button {
+            border: none;
+        }
+
+        /* Copy button styles */
+        .copy-button {
+            min-width: 60px;
+            align-self: flex-start;
+        }
+
+        /* Flex container styles */
+        .flex-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            width: 100%;
+        }
+
+        .flex-content {
+            flex: 1;
+            min-width: 0;
+            margin-right: 8px;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100">
+    <div class="main-container">
+        <div class="bg-white rounded-lg shadow-md p-4">
+            <div class="flex items-center justify-between mb-4">
+                <h1 class="text-xl font-bold text-gray-800">XPath Finder</h1>
+                <div class="relative inline-block w-12 mr-2 align-middle select-none">
+                    <input type="checkbox" id="toggleSwitch"
+                        class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer transition-transform duration-200 ease-in" />
+                    <label for="toggleSwitch"
+                        class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
+                </div>
+            </div>
+
+            <div id="statusMessage" class="mb-4 text-sm font-medium text-gray-600">
+                Toggle the switch to start selecting elements
+            </div>
+
+            <div id="xpathContainer" class="hidden">
+                <div class="flex items-center justify-between mb-2">
+                    <h2 class="text-md font-semibold text-gray-700">Generated XPaths:</h2>
+                    <div class="flex items-center">
+                        <span class="text-xs text-gray-600 mr-2">Basic Mode</span>
+                        <label class="simple-toggle">
+                            <input type="checkbox" id="simpleMode" checked>
+                            <span class="simple-slider"></span>
+                        </label>
+                    </div>
+                </div>
+                <div id="xpathList" class="space-y-2"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+
+</html>
