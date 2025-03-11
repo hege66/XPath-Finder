@@ -1,177 +1,130 @@
-// Background script for XPath Finder extension
+// Core state management
+const state = {
+  activeTabId: null,
+};
 
-// Store the last selected element data
-let lastSelectedElementData = null;
-let activeTabId = null;
+// Storage operations
+const storage = {
+  async save(data) {
+    await chrome.storage.local.set({ lastEleKey: data });
+  },
+  async clear() {
+    await chrome.storage.local.remove("lastEleKey");
+  },
+  async get() {
+    const { lastEleKey } = await chrome.storage.local.get("lastEleKey");
+    return lastEleKey;
+  },
+};
 
-// Listen for installation
-chrome.runtime.onInstalled.addListener(function (details) {
-  console.log("XPath Finder extension installed");
-});
+// Badge operations
+const badge = {
+  set(count) {
+    chrome.action.setBadgeText({ text: count > 0 ? count.toString() : "" });
+    chrome.action.setBadgeBackgroundColor({
+      color: count > 0 ? "#4F46E5" : "#EF4444",
+    });
+  },
+  clear() {
+    chrome.action.setBadgeText({ text: "" });
+  },
+};
 
-// Listen for tab changes
-chrome.tabs.onActivated.addListener(function (activeInfo) {
-  // If the tab changes, deactivate the extension and clear XPath data
-  if (activeTabId && activeTabId !== activeInfo.tabId) {
-    deactivateExtension();
-    clearXPathData();
-  }
-  activeTabId = activeInfo.tabId;
-});
-
-// Listen for navigation within the same tab
-chrome.tabs.onUpdated.addListener(function (tabId, changeInfo, tab) {
-  // If the URL changes in the active tab, deactivate the extension and clear XPath data
-  if (changeInfo.url && tabId === activeTabId) {
-    deactivateExtension();
-    clearXPathData();
-  }
-});
-
-// Deactivate the extension
-function deactivateExtension() {
-  if (activeTabId) {
+// Extension state management
+const extension = {
+    await storage.clear();
+    badge.clear();
+	console.log("cleaer")
     try {
-      chrome.tabs.sendMessage(
-        activeTabId,
-        { action: "deactivate" },
-        function (response) {
-          if (chrome.runtime.lastError) {
-            console.log(
-              "Error deactivating extension:",
-              chrome.runtime.lastError.message
-            );
-          } else {
-            console.log("Extension deactivated on tab change");
-          }
-        }
-      );
+      chrome.runtime.sendMessage({ action: "clearXPaths" });
     } catch (error) {
-      console.error("Error sending deactivate message:", error);
+      console.log("Popup not available");
     }
-  }
-}
+  },
 
-// Clear XPath data
-function clearXPathData() {
-  lastSelectedElementData = null;
-  // Notify popup to clear XPath display if it's open
-  try {
-    chrome.runtime.sendMessage({ action: "clearXPaths" }, function (response) {
-      if (chrome.runtime.lastError) {
-        // This is normal if popup is not open
-        console.log("Could not clear XPaths in popup (probably not open)");
-      } else {
-        console.log("XPaths cleared in popup");
-      }
-    });
-  } catch (error) {
-    console.error("Error sending clearXPaths message:", error);
-  }
-}
+  async deactivate() {
+    if (!state.activeTabId) return;
+    try {
+      await chrome.tabs.sendMessage(state.activeTabId, {
+        action: "deactivate",
+      });
+      await extension.clear();
+    } catch (error) {
+    }
+  },
+};
 
-// Listen for messages from popup or content scripts
-chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
-  console.log("Background script received message:", request);
-
-  // Store element data when an element is selected
-  if (request.action === "elementSelected") {
-    lastSelectedElementData = {
+// Message handlers
+const handlers = {
+  async elementSelected(request, sendResponse) {
+    let lastSelectedElementData = {
       xpaths: request.xpaths,
-      timestamp: Date.now(),
+      elementTag: request.elementTag,
+      elementHasEmptyXPaths: request.elementHasEmptyXPaths,
     };
-    sendResponse({
-      success: true,
-      message: "Data stored in background script",
-    });
-    return true;
-  }
-
-  // Provide the last selected element data to the popup
-  if (request.action === "getLastSelectedElement") {
-    sendResponse({
-      success: true,
-      data: lastSelectedElementData,
-    });
-    return true;
-  }
-
-  // Handle error reporting
-  if (request.action === "reportError") {
-    console.error("XPath Finder error:", request.error);
+    await storage.save(lastSelectedElementData);
+    badge.set(request.xpathCount || 0);
     sendResponse({ success: true });
+  },
+
+  async getLastSelectedElement(_, sendResponse) {
+    sendResponse({ success: true, data: await storage.get() });
+  },
+
+  async clearXPaths(_, sendResponse) {
+    await extension.clear();
+    sendResponse({ success: true });
+  },
+
+  async checkPageCompatibility(_, sendResponse) {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tabs?.length) {
+      return sendResponse({ canRun: false, reason: "No active tab" });
+    }
+
+    state.activeTabId = tabs[0].id;
+    const isRestricted =
+      /^(chrome|chrome-extension|about):/.test(tabs[0].url) ||
+      (tabs[0].url.startsWith("file://") && tabs[0].url.endsWith(".pdf"));
+
+    sendResponse({
+      canRun: !isRestricted,
+      reason: isRestricted ? "Cannot run on this page" : null,
+    });
+  },
+
+  async activate() {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tabs?.length) {
+      state.activeTabId = tabs[0].id;
+    }
+  },
+};
+
+// Event listeners
+chrome.runtime.onInstalled.addListener(() => {
+  console.log("XPath Finder installed");
+});
+
+chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+  if (state.activeTabId && state.activeTabId !== tabId) {
+    await extension.deactivate();
+  }
+  state.activeTabId = tabId;
+});
+
+chrome.tabs.onUpdated.addListener(async ({ tabId }) => {
+	await extension.deactivate();
+});
+
+chrome.runtime.onMessage.addListener((request, _, sendResponse) => {
+  const handler = handlers[request.action];
+  if (handler) {
+    handler(request, sendResponse).catch((error) => {
+      console.error(`${request.action} error:`, error);
+      sendResponse({ success: false, error: error.message });
+    });
     return true;
   }
-
-  // Handle page compatibility check
-  if (request.action === "checkPageCompatibility") {
-    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      if (tabs && tabs.length > 0) {
-        const tab = tabs[0];
-        activeTabId = tab.id;
-
-        // Check if this is a chrome:// page or other restricted page
-        if (
-          tab.url.startsWith("chrome://") ||
-          tab.url.startsWith("chrome-extension://") ||
-          tab.url.startsWith("about:") ||
-          (tab.url.startsWith("file://") && tab.url.endsWith(".pdf"))
-        ) {
-          sendResponse({
-            canRun: false,
-            reason: "Cannot run on Chrome internal pages or PDFs",
-          });
-        } else {
-          sendResponse({ canRun: true });
-        }
-      } else {
-        sendResponse({
-          canRun: false,
-          reason: "No active tab found",
-        });
-      }
-    });
-    return true; // Keep the message channel open for asynchronous response
-  }
-
-  // Store active tab ID when extension is activated
-  if (request.action === "activate") {
-    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      if (tabs && tabs.length > 0) {
-        activeTabId = tabs[0].id;
-      }
-    });
-  }
-
-  // Forward messages between popup and content scripts if needed
-  if (request.action === "forwardToContent") {
-    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      if (tabs && tabs.length > 0) {
-        chrome.tabs.sendMessage(
-          tabs[0].id,
-          request.message,
-          function (response) {
-            if (chrome.runtime.lastError) {
-              console.error(
-                "Error forwarding message:",
-                chrome.runtime.lastError
-              );
-              sendResponse({
-                success: false,
-                error: chrome.runtime.lastError.message,
-              });
-            } else {
-              sendResponse(response);
-            }
-          }
-        );
-      } else {
-        sendResponse({ success: false, error: "No active tab found" });
-      }
-    });
-    return true; // Keep the message channel open for asynchronous response
-  }
-
-  // Handle other messages if needed
   return false;
 });

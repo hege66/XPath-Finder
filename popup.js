@@ -1,112 +1,127 @@
-document.addEventListener("DOMContentLoaded", function () {
-  const toggleSwitch = document.getElementById("toggleSwitch");
-  const simpleModeSwitch = document.getElementById("simpleMode");
-  const statusMessage = document.getElementById("statusMessage");
-  const xpathContainer = document.getElementById("xpathContainer");
-  const xpathList = document.getElementById("xpathList");
+// UI Elements
+const ui = {
+  elements: {
+    toggleSwitch: null,
+    simpleModeSwitch: null,
+    statusMessage: null,
+    xpathContainer: null,
+    xpathList: null,
+  },
 
-  // Current data storage
-  let currentElementData = null;
-  let isSimpleMode = true; // Default to simple mode
+  initialize() {
+    // Get DOM elements
+    this.elements.toggleSwitch = document.getElementById("toggleSwitch");
+    this.elements.simpleModeSwitch = document.getElementById("simpleMode");
+    this.elements.statusMessage = document.getElementById("statusMessage");
+    this.elements.xpathContainer = document.getElementById("xpathContainer");
+    this.elements.xpathList = document.getElementById("xpathList");
+  },
 
-  // Custom styles for the toggle switch
-  const style = document.createElement("style");
-  style.textContent = `
-    .toggle-checkbox:checked {
-      transform: translateX(100%);
-      border-color: #4f46e5;
+  showErrorState(message) {
+    this.elements.statusMessage.textContent =
+      message || "Cannot run on this page";
+    this.elements.statusMessage.classList.add("text-red-600");
+    this.elements.toggleSwitch.disabled = true;
+  },
+
+  updateStatus(isActive) {
+    this.elements.toggleSwitch.checked = isActive;
+    this.elements.statusMessage.textContent = isActive
+      ? "Element selection is active"
+      : "Element selection is inactive";
+
+    if (isActive) {
+      this.elements.statusMessage.classList.add("text-indigo-600");
+      this.elements.statusMessage.classList.remove("text-red-600");
+    } else {
+      this.elements.statusMessage.classList.remove("text-indigo-600");
+      this.elements.statusMessage.classList.remove("text-red-600");
+      this.elements.xpathContainer.classList.add("hidden");
     }
-    .toggle-checkbox:checked + .toggle-label {
-      background-color: #4f46e5;
-    }
-  `;
-  document.head.appendChild(style);
+  },
+};
 
-  // First check if we can run on this page
-  chrome.runtime.sendMessage(
-    { action: "checkPageCompatibility" },
-    function (response) {
-      if (chrome.runtime.lastError) {
-        console.error(
-          "Error checking page compatibility:",
-          chrome.runtime.lastError
-        );
-        showErrorState("Error checking page compatibility");
-        return;
-      }
+// XPath display and management
+const xpathManager = {
+  currentElementData: null,
+  isSimpleMode: true,
 
-      if (!response || response.canRun === false) {
-        showErrorState(response ? response.reason : "Cannot run on this page");
-        return;
-      }
-
-      // Page is compatible, check if the extension is already active
-      checkExtensionStatus();
-
-      // Check if there's any recently selected element data
-      checkForRecentElementData();
-    }
-  );
-
-  // Toggle simple mode
-  simpleModeSwitch.addEventListener("change", function () {
-    isSimpleMode = simpleModeSwitch.checked;
-
-    // If we have current data, redisplay it with the new mode
-    if (currentElementData) {
-      displayElementData(currentElementData);
-    }
-  });
-
-  // Check for recently selected element data from background script
-  function checkForRecentElementData() {
-    chrome.runtime.sendMessage(
-      { action: "getLastSelectedElement" },
-      function (response) {
-        if (chrome.runtime.lastError) {
-          console.log(
-            "Error getting last selected element:",
-            chrome.runtime.lastError
-          );
-          return;
-        }
-
-        if (response && response.success && response.data) {
-          // Check if the data is recent (within the last 5 minutes)
-          const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
-          if (
-            response.data.timestamp &&
-            response.data.timestamp > fiveMinutesAgo
-          ) {
-            currentElementData = response.data;
-            displayElementData(response.data);
-          }
-        }
-      }
-    );
-  }
-
-  // Display element data in the popup
-  function displayElementData(data) {
-    currentElementData = data;
-    xpathContainer.classList.remove("hidden");
+  displayElementData(data) {
+    this.currentElementData = data;
+    ui.elements.xpathContainer.classList.remove("hidden");
 
     // Clear previous XPaths
-    xpathList.innerHTML = "";
+    ui.elements.xpathList.innerHTML = "";
+
+    // Check if we have empty XPaths
+    if (
+      !data.xpaths ||
+      data.xpaths.length === 0 ||
+      data.elementHasEmptyXPaths
+    ) {
+      this.displayEmptyXPathError(data);
+      return;
+    }
 
     // Group XPaths by type
+    const xpathsByType = this.groupXPathsByType(data.xpaths);
+
+    // Determine which types to show based on mode
+    let typesToShow = this.isSimpleMode
+      ? ["ID-based", "Text-based", "Optimized"]
+      : Object.keys(xpathsByType);
+
+    // Check if we have any XPaths in the simple mode categories
+    if (this.isSimpleMode) {
+      const hasSimpleModeXPaths = typesToShow.some(
+        (type) => xpathsByType[type] && xpathsByType[type].length > 0
+      );
+
+      // If no XPaths found in simple mode, automatically switch to full mode
+      if (!hasSimpleModeXPaths) {
+        this.switchToFullMode(xpathsByType);
+        typesToShow = Object.keys(xpathsByType);
+      }
+    }
+
+    // Create XPath list with categories
+    this.renderXPathCategories(typesToShow, xpathsByType);
+
+    // Scroll to the top of the XPath list
+    ui.elements.xpathList.scrollTop = 0;
+  },
+
+  displayEmptyXPathError(data) {
+    // Create an error message
+    const errorMessage = document.createElement("div");
+    errorMessage.className =
+      "text-red-600 text-sm font-medium p-2 bg-red-50 rounded-md mb-2";
+    errorMessage.textContent = `无法为选中的 ${
+      data.elementTag || "元素"
+    } 生成XPath表达式。请尝试选择另一个元素。`;
+    ui.elements.xpathList.appendChild(errorMessage);
+
+    // Add a suggestion
+    const suggestion = document.createElement("div");
+    suggestion.className = "text-gray-600 text-xs p-2";
+    suggestion.textContent =
+      "提示：某些动态生成或特殊元素可能无法生成有效的XPath。";
+    ui.elements.xpathList.appendChild(suggestion);
+  },
+
+  groupXPathsByType(xpaths) {
     const xpathsByType = {
       "ID-based": [],
       "Attribute-based": [],
+      Optimized: [],
       "Text-based": [],
       "Class-based": [],
       "Position-based": [],
       Absolute: [],
-      Optimized: [],
     };
 
     // Categorize XPaths
-    data.xpaths.forEach(function (xpathInfo) {
+    xpaths.forEach(function (xpathInfo) {
       if (xpathInfo.xpath) {
         const type = xpathInfo.type || "Other";
         if (xpathsByType[type]) {
@@ -117,12 +132,28 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     });
 
-    // Determine which types to show based on mode
-    const typesToShow = isSimpleMode
-      ? ["ID-based", "Text-based", "Optimized"]
-      : Object.keys(xpathsByType);
+    return xpathsByType;
+  },
 
-    // Create XPath list with categories
+  switchToFullMode(xpathsByType) {
+    console.log(
+      "XPath Finder: No XPaths found in Basic Mode, switching to Full Mode"
+    );
+
+    // Update the UI to reflect the mode change
+    this.isSimpleMode = false;
+    ui.elements.simpleModeSwitch.checked = false;
+
+    // Show a notification about the mode switch
+    const modeChangeNotice = document.createElement("div");
+    modeChangeNotice.className =
+      "text-blue-600 text-xs p-2 bg-blue-50 rounded-md mb-2 notice";
+    modeChangeNotice.textContent =
+      "Automatically switched to Full Mode to show more XPath options";
+    ui.elements.xpathList.appendChild(modeChangeNotice);
+  },
+
+  renderXPathCategories(typesToShow, xpathsByType) {
     for (const type of typesToShow) {
       const xpaths = xpathsByType[type] || [];
       if (xpaths.length > 0) {
@@ -131,168 +162,21 @@ document.addEventListener("DOMContentLoaded", function () {
         categoryHeader.className =
           "text-sm font-medium text-gray-700 mt-3 mb-1";
         categoryHeader.textContent = type;
-        xpathList.appendChild(categoryHeader);
+        ui.elements.xpathList.appendChild(categoryHeader);
 
         // Add XPaths in this category
-        xpaths.forEach(function (xpathInfo) {
-          const xpathItem = createXPathItem(
+        xpaths.forEach((xpathInfo) => {
+          const xpathItem = this.createXPathItem(
             xpathInfo.xpath,
             xpathInfo.description
           );
-          xpathList.appendChild(xpathItem);
+          ui.elements.xpathList.appendChild(xpathItem);
         });
       }
     }
+  },
 
-    // Scroll to the top of the XPath list
-    xpathList.scrollTop = 0;
-  }
-
-  function showErrorState(message) {
-    statusMessage.textContent = message || "Cannot run on this page";
-    statusMessage.classList.add("text-red-600");
-    toggleSwitch.disabled = true;
-  }
-
-  function checkExtensionStatus() {
-    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      if (tabs && tabs.length > 0) {
-        try {
-          chrome.tabs.sendMessage(
-            tabs[0].id,
-            { action: "getStatus" },
-            function (response) {
-              if (chrome.runtime.lastError) {
-                console.log(
-                  "Error sending message:",
-                  chrome.runtime.lastError.message
-                );
-                // This is normal for pages that haven't loaded the content script yet
-                // We don't show an error here, just leave the toggle in the default state
-                return;
-              }
-
-              if (response) {
-                if (response.canRun === false) {
-                  showErrorState(
-                    "Content script reports it cannot run on this page"
-                  );
-                  return;
-                }
-
-                if (response.isActive) {
-                  toggleSwitch.checked = true;
-                  statusMessage.textContent = "Element selection is active";
-                  statusMessage.classList.add("text-indigo-600");
-                }
-              }
-            }
-          );
-        } catch (error) {
-          console.log("Error sending message:", error);
-          // Don't show an error, just leave the toggle in the default state
-        }
-      }
-    });
-  }
-
-  // Toggle the element selection mode
-  toggleSwitch.addEventListener("change", function () {
-    if (toggleSwitch.disabled) return;
-
-    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      if (tabs && tabs.length > 0) {
-        try {
-          if (toggleSwitch.checked) {
-            chrome.tabs.sendMessage(
-              tabs[0].id,
-              { action: "activate" },
-              function (response) {
-                if (chrome.runtime.lastError) {
-                  console.log(
-                    "Error sending message:",
-                    chrome.runtime.lastError.message
-                  );
-                  toggleSwitch.checked = false;
-                  statusMessage.textContent =
-                    "Error: Cannot activate on this page";
-                  statusMessage.classList.add("text-red-600");
-                  return;
-                }
-
-                if (response) {
-                  if (response.canRun === false) {
-                    toggleSwitch.checked = false;
-                    showErrorState(
-                      "Content script reports it cannot run on this page"
-                    );
-                    return;
-                  }
-
-                  statusMessage.textContent = "Element selection is active";
-                  statusMessage.classList.add("text-indigo-600");
-                  statusMessage.classList.remove("text-red-600");
-
-                  // Notify background script that extension is activated
-                  chrome.runtime.sendMessage({ action: "activate" });
-                } else {
-                  toggleSwitch.checked = false;
-                  statusMessage.textContent = "Error: No response from page";
-                  statusMessage.classList.add("text-red-600");
-                }
-              }
-            );
-          } else {
-            chrome.tabs.sendMessage(
-              tabs[0].id,
-              { action: "deactivate" },
-              function (response) {
-                if (chrome.runtime.lastError) {
-                  console.log(
-                    "Error sending message:",
-                    chrome.runtime.lastError.message
-                  );
-                  return;
-                }
-
-                statusMessage.textContent = "Element selection is inactive";
-                statusMessage.classList.remove("text-indigo-600");
-                statusMessage.classList.remove("text-red-600");
-                xpathContainer.classList.add("hidden");
-              }
-            );
-          }
-        } catch (error) {
-          console.log("Error sending message:", error);
-          toggleSwitch.checked = false;
-          statusMessage.textContent = "Error: Cannot activate on this page";
-          statusMessage.classList.add("text-red-600");
-        }
-      }
-    });
-  });
-
-  // Listen for messages from the content script
-  chrome.runtime.onMessage.addListener(function (
-    request,
-    sender,
-    sendResponse
-  ) {
-    if (request.action === "elementSelected") {
-      displayElementData(request);
-      sendResponse({ success: true });
-    } else if (request.action === "clearXPaths") {
-      // Clear XPath display
-      currentElementData = null;
-      xpathContainer.classList.add("hidden");
-      xpathList.innerHTML = "";
-      sendResponse({ success: true });
-    }
-    return true;
-  });
-
-  // Create an XPath item with copy button
-  function createXPathItem(xpath, description) {
+  createXPathItem(xpath, description) {
     const xpathItem = document.createElement("div");
     xpathItem.className = "bg-gray-50 p-2 rounded border border-gray-200";
 
@@ -318,19 +202,9 @@ document.addEventListener("DOMContentLoaded", function () {
       "text-xs bg-indigo-500 text-white px-2 py-1 rounded hover:bg-indigo-600 transition-colors focus:outline-none copy-button";
     copyButton.style.border = "none";
     copyButton.textContent = "Copy";
-    copyButton.addEventListener("click", function () {
-      navigator.clipboard.writeText(xpath).then(function () {
-        const originalText = copyButton.textContent;
-        copyButton.textContent = "Copied!";
-        copyButton.classList.remove("bg-indigo-500");
-        copyButton.classList.add("bg-green-500");
-        setTimeout(function () {
-          copyButton.textContent = originalText;
-          copyButton.classList.remove("bg-green-500");
-          copyButton.classList.add("bg-indigo-500");
-        }, 1500);
-      });
-    });
+    copyButton.addEventListener("click", () =>
+      this.copyXPathToClipboard(xpath, copyButton)
+    );
 
     // Assemble the components
     xpathContent.appendChild(xpathText);
@@ -343,5 +217,259 @@ document.addEventListener("DOMContentLoaded", function () {
     xpathItem.appendChild(container);
 
     return xpathItem;
-  }
+  },
+
+  copyXPathToClipboard(xpath, copyButton) {
+    navigator.clipboard.writeText(xpath).then(function () {
+      const originalText = copyButton.textContent;
+      copyButton.textContent = "Copied!";
+      copyButton.classList.remove("bg-indigo-500");
+      copyButton.classList.add("bg-green-500");
+      setTimeout(function () {
+        copyButton.textContent = originalText;
+        copyButton.classList.remove("bg-green-500");
+        copyButton.classList.add("bg-indigo-500");
+      }, 1500);
+    });
+  },
+
+  clearXPaths() {
+    this.currentElementData = null;
+    ui.elements.xpathContainer.classList.add("hidden");
+    ui.elements.xpathList.innerHTML = "";
+  },
+};
+
+// Communication with background script and content script
+const communication = {
+  checkPageCompatibility() {
+    chrome.runtime.sendMessage(
+      { action: "checkPageCompatibility" },
+      function (response) {
+        if (chrome.runtime.lastError) {
+          console.error(
+            "Error checking page compatibility:",
+            chrome.runtime.lastError
+          );
+          ui.showErrorState("Error checking page compatibility");
+          return;
+        }
+
+        if (!response || response.canRun === false) {
+          ui.showErrorState(
+            response ? response.reason : "Cannot run on this page"
+          );
+          return;
+        }
+
+        // Page is compatible, check if the extension is already active
+        communication.checkExtensionStatus();
+
+        // Check if there's any recently selected element data
+        communication.checkForRecentElementData();
+      }
+    );
+  },
+
+  checkExtensionStatus() {
+    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+      if (tabs && tabs.length > 0) {
+        try {
+          chrome.tabs.sendMessage(
+            tabs[0].id,
+            { action: "getStatus" },
+            function (response) {
+              if (chrome.runtime.lastError) {
+                console.log(
+                  "Error sending message:",
+                  chrome.runtime.lastError.message
+                );
+                return;
+              }
+
+              if (response) {
+                if (response.canRun === false) {
+                  ui.showErrorState(
+                    "Content script reports it cannot run on this page"
+                  );
+                  return;
+                }
+
+                if (response.isActive) {
+                  ui.updateStatus(true);
+                }
+              }
+            }
+          );
+        } catch (error) {
+          console.log("Error sending message:", error);
+        }
+      }
+    });
+  },
+
+  checkForRecentElementData() {
+    chrome.runtime.sendMessage(
+      { action: "getLastSelectedElement" },
+      function (response) {
+        if (chrome.runtime.lastError) {
+          console.log(
+            "Error getting last selected element:",
+            chrome.runtime.lastError
+          );
+          return;
+        }
+
+        if (response && response.success && response.data) {
+          if (
+            (response.data.xpaths.length === 0 ||
+              response.data.elementHasEmptyXPaths) &&
+            ui.elements.toggleSwitch.checked
+          ) {
+            console.warn(
+              "XPath Finder: Detected empty XPaths with active extension"
+            );
+            xpathManager.displayElementData(response.data);
+          } else {
+            xpathManager.displayElementData(response.data);
+          }
+        }
+      }
+    );
+  },
+
+  activateExtension() {
+    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+      if (tabs && tabs.length > 0) {
+        try {
+          chrome.tabs.sendMessage(
+            tabs[0].id,
+            { action: "activate" },
+            function (response) {
+              if (chrome.runtime.lastError) {
+                console.log(
+                  "Error sending message:",
+                  chrome.runtime.lastError.message
+                );
+                ui.elements.toggleSwitch.checked = false;
+                ui.elements.statusMessage.textContent =
+                  "Error: Cannot activate on this page";
+                ui.elements.statusMessage.classList.add("text-red-600");
+                return;
+              }
+
+              if (response) {
+                if (response.canRun === false) {
+                  ui.elements.toggleSwitch.checked = false;
+                  ui.showErrorState(
+                    "Content script reports it cannot run on this page"
+                  );
+                  return;
+                }
+
+                ui.updateStatus(true);
+
+                // Notify background script that extension is activated
+                chrome.runtime.sendMessage({ action: "activate" });
+              } else {
+                ui.elements.toggleSwitch.checked = false;
+                ui.elements.statusMessage.textContent =
+                  "Error: No response from page";
+                ui.elements.statusMessage.classList.add("text-red-600");
+              }
+            }
+          );
+        } catch (error) {
+          console.error("Error activating extension:", error);
+          ui.elements.toggleSwitch.checked = false;
+          ui.elements.statusMessage.textContent = "Error: " + error.message;
+          ui.elements.statusMessage.classList.add("text-red-600");
+        }
+      }
+    });
+  },
+
+  deactivateExtension() {
+    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+      if (tabs && tabs.length > 0) {
+        try {
+          chrome.tabs.sendMessage(
+            tabs[0].id,
+            { action: "deactivate" },
+            function (response) {
+              if (chrome.runtime.lastError) {
+                console.log(
+                  "Error sending message:",
+                  chrome.runtime.lastError.message
+                );
+                return;
+              }
+
+              ui.updateStatus(false);
+
+              // Clear XPath data when deactivated
+              chrome.runtime.sendMessage({ action: "clearXPaths" });
+            }
+          );
+        } catch (error) {
+          console.error("Error deactivating extension:", error);
+        }
+      }
+    });
+  },
+};
+
+// Event handlers
+const eventHandlers = {
+  setupEventListeners() {
+    // Toggle extension activation
+    ui.elements.toggleSwitch.addEventListener("change", function () {
+      if (ui.elements.toggleSwitch.disabled) return;
+
+      if (ui.elements.toggleSwitch.checked) {
+        communication.activateExtension();
+      } else {
+        communication.deactivateExtension();
+      }
+    });
+
+    // Toggle simple mode
+    ui.elements.simpleModeSwitch.addEventListener("change", function () {
+      xpathManager.isSimpleMode = ui.elements.simpleModeSwitch.checked;
+
+      // If we have current data, redisplay it with the new mode
+      if (xpathManager.currentElementData) {
+        xpathManager.displayElementData(xpathManager.currentElementData);
+      }
+    });
+
+    // Listen for messages from the content script
+    chrome.runtime.onMessage.addListener(function (
+      request,
+      sender,
+      sendResponse
+    ) {
+      if (request.action === "elementSelected") {
+        xpathManager.displayElementData(request);
+        sendResponse({ success: true });
+      } else if (request.action === "clearXPaths") {
+        // Clear XPath display
+        xpathManager.clearXPaths();
+        sendResponse({ success: true });
+      }
+      return true;
+    });
+  },
+};
+
+// Initialize the popup
+document.addEventListener("DOMContentLoaded", function () {
+  // Initialize UI
+  ui.initialize();
+
+  // Setup event listeners
+  eventHandlers.setupEventListeners();
+
+  // Check page compatibility
+  communication.checkPageCompatibility();
 });

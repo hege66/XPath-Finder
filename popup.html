@@ -123,6 +123,16 @@
             min-width: 0;
             margin-right: 8px;
         }
+
+        .icon {
+            width: 24px;
+            height: 24px;
+            margin-right: 8px;
+        }
+
+        .notice {
+            color: #ffae00;
+        }
     </style>
 </head>
 
@@ -130,7 +140,10 @@
     <div class="main-container">
         <div class="bg-white rounded-lg shadow-md p-4">
             <div class="flex items-center justify-between mb-4">
-                <h1 class="text-xl font-bold text-gray-800">XPath Finder</h1>
+                <div class="flex items-center">
+                    <img src="images/icon48.png" class="icon" />
+                    <h1 class="text-xl font-bold text-gray-800">XPath Finder</h1>
+                </div>
                 <div class="relative inline-block w-12 mr-2 align-middle select-none">
                     <input type="checkbox" id="toggleSwitch"
                         class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer transition-transform duration-200 ease-in" />
