@@ -59,7 +59,6 @@ const xpathManager = {
       data.xpaths.length === 0 ||
       data.elementHasEmptyXPaths
     ) {
-      this.displayEmptyXPathError(data);
       return;
     }
 
@@ -89,24 +88,6 @@ const xpathManager = {
 
     // Scroll to the top of the XPath list
     ui.elements.xpathList.scrollTop = 0;
-  },
-
-  displayEmptyXPathError(data) {
-    // Create an error message
-    const errorMessage = document.createElement("div");
-    errorMessage.className =
-      "text-red-600 text-sm font-medium p-2 bg-red-50 rounded-md mb-2";
-    errorMessage.textContent = `无法为选中的 ${
-      data.elementTag || "元素"
-    } 生成XPath表达式。请尝试选择另一个元素。`;
-    ui.elements.xpathList.appendChild(errorMessage);
-
-    // Add a suggestion
-    const suggestion = document.createElement("div");
-    suggestion.className = "text-gray-600 text-xs p-2";
-    suggestion.textContent =
-      "提示：某些动态生成或特殊元素可能无法生成有效的XPath。";
-    ui.elements.xpathList.appendChild(suggestion);
   },
 
   groupXPathsByType(xpaths) {

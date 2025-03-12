@@ -32,11 +32,18 @@ const badge = {
 
 // Extension state management
 const extension = {
+  async clear() {
     await storage.clear();
     badge.clear();
-	console.log("cleaer")
     try {
-      chrome.runtime.sendMessage({ action: "clearXPaths" });
+      chrome.runtime.sendMessage({ action: "clearXPaths" }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.log(
+            "Error sending message:",
+            chrome.runtime.lastError.message
+          );
+        }
+      });
     } catch (error) {
       console.log("Popup not available");
     }
@@ -45,11 +52,23 @@ const extension = {
   async deactivate() {
     if (!state.activeTabId) return;
     try {
-      await chrome.tabs.sendMessage(state.activeTabId, {
-        action: "deactivate",
-      });
+      await chrome.runtime.sendMessage(
+        {
+          tabId: state.activeTabId,
+          action: "deactivate",
+        },
+        (response) => {
+          if (chrome.runtime.lastError) {
+            console.log(
+              "Error sending message:",
+              chrome.runtime.lastError.message
+            );
+          }
+        }
+      );
       await extension.clear();
     } catch (error) {
+      console.log("Deactivation error:", error);
     }
   },
 };
@@ -91,6 +110,7 @@ const handlers = {
       canRun: !isRestricted,
       reason: isRestricted ? "Cannot run on this page" : null,
     });
+    return true;
   },
 
   async activate() {
@@ -114,7 +134,9 @@ chrome.tabs.onActivated.addListener(async ({ tabId }) => {
 });
 
 chrome.tabs.onUpdated.addListener(async ({ tabId }) => {
-	await extension.deactivate();
+  if (tabId === state.activeTabId) {
+    await extension.deactivate();
+  }
 });
 
 chrome.runtime.onMessage.addListener((request, _, sendResponse) => {

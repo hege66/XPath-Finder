@@ -38,7 +38,7 @@ function canRunOnPage() {
 // Initialize the extension
 function initializeExtension() {
   console.log("XPath Finder: Content script initialized");
-
+  chrome.runtime.sendMessage({ action: "clearXPaths" });
   // Check if we can run on this page
   if (!canRunOnPage()) {
     console.log("XPath Finder: Cannot run on this page");
