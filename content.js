@@ -723,9 +723,19 @@ function getXPathsWithClass(element) {
       // Try with each individual class
       for (const cls of classes) {
         if (cls.length > 0) {
+          let { position, totalElements } = getElementInfoBySingleClass(
+            element,
+            cls
+          );
+          let xpath;
+          if (totalElements > 1) {
+            xpath = `(//${element.tagName.toLowerCase()}[contains(@class, "${cls}")])[${position}]`;
+          } else {
+            xpath = `//${element.tagName.toLowerCase()}[contains(@class, "${cls}")]`;
+          }
           // More specific with tag name
           results.push({
-            xpath: `//${element.tagName.toLowerCase()}[contains(@class, "${cls}")]`,
+            xpath: xpath,
             description: `Using tag name and class "${cls}"`,
           });
         }
@@ -734,7 +744,9 @@ function getXPathsWithClass(element) {
       // Try with full class string if it has multiple classes
       if (classes.length > 1) {
         results.push({
-          xpath: `//*[@class="${element.className}"]`,
+          xpath: `//${element.tagName.toLowerCase()}[@class="${
+            element.className
+          }"]`,
           description: "Using exact class attribute match",
         });
       }
@@ -984,16 +996,16 @@ function getXPathsWithPosition(element) {
 
   // Simple position among siblings
   let position = 1;
-  let sibling = element.previousElementSibling;
-
-  while (sibling) {
-    position++;
-    sibling = sibling.previousElementSibling;
+  let elementInfo = getElementInfo(element);
+  if (elementInfo["totalElements"] > 1) {
+    path = `(//${element.tagName.toLowerCase()})[${elementInfo["position"]}]`;
+  } else {
+    path = `//${element.tagName.toLowerCase()}`;
   }
 
   results.push({
-    xpath: `//${element.tagName.toLowerCase()}[${position}]`,
-    description: `${position}${getOrdinalSuffix(
+    xpath: path,
+    description: `${elementInfo["position"]}${getOrdinalSuffix(
       position
     )} ${element.tagName.toLowerCase()} child of its parent`,
   });
@@ -1021,10 +1033,26 @@ function getXPathsWithPosition(element) {
   // Relative path from parent
   if (parent && parent !== document.body) {
     const parentTag = parent.tagName.toLowerCase();
+    let elementInfo = getElementInfo(parent);
+    let { totalSiblings, sibLingPosition } = getElementPositionInParent(
+      element,
+      parent
+    );
+    if (elementInfo["totalElements"] > 1 && sibLingPosition > 1) {
+      path = `(//${parentTag})[${
+        elementInfo["position"]
+      }]/${element.tagName.toLowerCase()}[${sibLingPosition}]`;
+    } else if (elementInfo["totalElements"] > 1 && sibLingPosition == 1) {
+      path = `(//${parentTag})[${
+        elementInfo["position"]
+      }]/${element.tagName.toLowerCase()}[${position}]`;
+    } else {
+      path = `//${parentTag}/${element.tagName.toLowerCase()}[${position}]`;
+    }
 
     // Position within parent
     results.push({
-      xpath: `//${parentTag}/${element.tagName.toLowerCase()}[${position}]`,
+      xpath: path,
       description: `Direct child of ${parentTag} element`,
     });
 
@@ -1085,8 +1113,8 @@ function getXPathsWithPosition(element) {
   // If we didn't find an ID anchor, use a relative path from a unique parent
   if (path && parent && parent !== document.body) {
     results.push({
-      xpath: `//body${path}`,
-      description: "Relative path from body element",
+      xpath: `/${path}`,
+      description: "Relative path from a unique parent",
     });
   }
 
@@ -1280,4 +1308,60 @@ function getOrdinalSuffix(n) {
   const s = ["th", "st", "nd", "rd"];
   const v = n % 100;
   return s[(v - 20) % 10] || s[v] || s[0];
+}
+
+function getElementInfo(element) {
+  const tagName = element.tagName.toLowerCase();
+  const allSameTagElements = document.querySelectorAll(tagName);
+  const elementsArray = Array.from(allSameTagElements);
+
+  return {
+    tagName: tagName,
+    totalElements: elementsArray.length,
+    position: elementsArray.indexOf(element) + 1,
+  };
+}
+
+function getElementInfoBySingleClass(element, specificClass) {
+  const tagName = element.tagName.toLowerCase();
+
+  if (!specificClass && element.classList.length > 0) {
+    specificClass = element.classList[0];
+  }
+
+  if (!specificClass) {
+    return {
+      error:
+        "No class specified and the element does not have a class attribute",
+    };
+  }
+
+  const selector = `${tagName}.${specificClass}`;
+  const matchingElements = document.querySelectorAll(selector);
+
+  return {
+    tagName: tagName,
+    className: specificClass,
+    totalElements: matchingElements.length,
+    position: Array.from(matchingElements).indexOf(element) + 1,
+  };
+}
+
+function getElementPositionInParent(element, parent) {
+  const siblingElements = parent.getElementsByTagName(element.tagName);
+  const totalCount = siblingElements.length;
+
+  let position = -1;
+  for (let i = 0; i < totalCount; i++) {
+    if (siblingElements[i] === element) {
+      position = i + 1;
+      break;
+    }
+  }
+
+  return {
+    parentTagName: parent.tagName.toLowerCase(),
+    totalSiblings: totalCount,
+    sibLingPosition: position,
+  };
 }
