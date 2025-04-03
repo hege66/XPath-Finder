@@ -679,7 +679,7 @@ function getAbsoluteXPath(element) {
 }
 
 // Get XPaths with ID
-function getXPathsWithId(element) {
+function getXPathsWithId(element, needParent = true) {
   const results = [];
 
   // Direct ID
@@ -691,24 +691,25 @@ function getXPathsWithId(element) {
     });
   }
 
-  // Parent with ID
-  let parent = element.parentElement;
-  let path = "";
-  let depth = 0;
+  if (needParent) {
+    // Parent with ID
+    let parent = element.parentElement;
+    let path = "";
+    let depth = 0;
 
-  while (parent && parent !== document.body && depth < 3) {
-    if (parent.id) {
-      const tagPath = getRelativePathToParent(element, parent);
-      results.push({
-        xpath: `//*[@id="${parent.id}"]${tagPath}`,
-        description: `Relative to parent with ID "${parent.id}"`,
-      });
-      break;
+    while (parent && parent !== document.body && depth < 3) {
+      if (parent.id) {
+        const tagPath = getRelativePathToParent(element, parent);
+        results.push({
+          xpath: `//*[@id="${parent.id}"]${tagPath}`,
+          description: `Relative to parent with ID "${parent.id}"`,
+        });
+        break;
+      }
+      parent = parent.parentElement;
+      depth++;
     }
-    parent = parent.parentElement;
-    depth++;
   }
-
   return results;
 }
 
@@ -763,7 +764,6 @@ function getXPathsWithAttributes(element) {
   // Check all attributes
   for (let i = 0; i < element.attributes.length; i++) {
     const attr = element.attributes[i];
-
     // Skip id, class, style, href, target, and onclick as they're handled separately or unstable
     if (excludedAttributes.includes(attr.name)) continue;
 
@@ -993,6 +993,54 @@ function getXPathsWithPosition(element) {
   let path = "";
   let current = element;
   let parent = current.parentElement;
+
+  // following-sibling xpath
+  let previousSiblings = getPreviousSiblings(current);
+  if (previousSiblings.length > 0) {
+    previousSiblings.forEach((previousSibling) => {
+      let result = getXPathsWithId(previousSibling, false);
+      if (result.length == 0) {
+        result = getXPathsWithText(previousSibling);
+      }
+      if (result.length == 0) {
+        result = getXPathsWithClass(previousSibling);
+      }
+      if (result.length == 0) {
+        result = getXPathsWithAttributes(previousSibling);
+      }
+      if (result.length > 0) {
+        path = result[0]["xpath"];
+        results.push({
+          xpath: `${path}/following-sibling::${element.tagName.toLowerCase()}`,
+          description: `Following-sibling xpath by ${path}`,
+        });
+      }
+    });
+  }
+
+  // preceding-sibling xpath
+  let nextSiblings = getNextSiblings(current);
+  if (nextSiblings.length > 0) {
+    nextSiblings.forEach((nextSibling) => {
+      let result = getXPathsWithId(nextSibling);
+      if (result.length == 0) {
+        result = getXPathsWithText(nextSibling);
+      }
+      if (result.length == 0) {
+        result = getXPathsWithClass(nextSibling);
+      }
+      if (result.length == 0) {
+        result = getXPathsWithAttributes(nextSibling);
+      }
+      if (result.length > 0) {
+        path = result[0]["xpath"];
+        results.push({
+          xpath: `${path}/preceding-sibling::${element.tagName.toLowerCase()}`,
+          description: `Preceding-sibling xpath by ${path}`,
+        });
+      }
+    });
+  }
 
   // Simple position among siblings
   let position = 1;
@@ -1364,4 +1412,28 @@ function getElementPositionInParent(element, parent) {
     totalSiblings: totalCount,
     sibLingPosition: position,
   };
+}
+
+function getPreviousSiblings(element) {
+  const siblings = [];
+  let sibling = element.previousElementSibling;
+
+  while (sibling) {
+    siblings.unshift(sibling);
+    sibling = sibling.previousElementSibling;
+  }
+
+  return siblings;
+}
+
+function getNextSiblings(element) {
+  const siblings = [];
+  let sibling = element.nextElementSibling;
+
+  while (sibling) {
+    siblings.push(sibling);
+    sibling = sibling.nextElementSibling;
+  }
+
+  return siblings;
 }
